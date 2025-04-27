@@ -1,260 +1,139 @@
-# Polkadot MCP (Minimum Compute Platform)
+# Polkadot Model Context Protocol (MCP)
 
-An MCP that allows AI agents to interact with smart contracts on the Polkadot ecosystem.
+This project implements a [Model Context Protocol (MCP)](https://zencoder.ai/blog/model-context-protocol) server and client for interacting with Polkadot blockchain wallets. MCP is an open protocol that standardizes how applications provide context to large language models (LLMs), enabling them to interact with external systems through a common interface.
 
-## Overview
+## Components
 
-This project provides a REST API that AI agents can use to interact with an EVM-compatible smart contract deployed on a Polkadot parachain (like Moonbeam, Astar, etc.). The smart contract serves as a simple wallet manager where agents can:
+- **polkadot_mcp_server.py**: MCP server that exposes Polkadot wallet functionality
+- **polkadot_mcp_client.py**: Example MCP client that connects to the server
+- **PolkadotMCP.js**: Express.js server that provides the underlying Polkadot API
+- **contracts/AIWalletManager.sol**: Solidity smart contract for wallet management
 
-- Check token balances
-- Deposit tokens
-- Withdraw tokens
-- Authorize and deauthorize AI agents
+## Features
 
-## Smart Contract
+The MCP server exposes the following tools:
 
-The smart contract (`AIWalletManager.sol`) is written in Solidity and can be deployed to any EVM-compatible parachain in the Polkadot ecosystem.
-
-```solidity
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
-
-contract AIWalletManager {
-    mapping(address => uint256) private balances;
-    mapping(address => bool) private authorizedAgents;
-    address public owner;
-    
-    event Deposit(address indexed account, uint256 amount);
-    event Withdrawal(address indexed account, uint256 amount);
-    event AgentAuthorized(address indexed agent);
-    event AgentDeauthorized(address indexed agent);
-    
-    constructor() {
-        owner = msg.sender;
-    }
-    
-    modifier onlyOwner() {
-        require(msg.sender == owner, "Only owner can call this function");
-        _;
-    }
-    
-    modifier onlyAuthorized() {
-        require(msg.sender == owner || authorizedAgents[msg.sender], "Not authorized");
-        _;
-    }
-    
-    function authorizeAgent(address agent) external onlyOwner {
-        authorizedAgents[agent] = true;
-        emit AgentAuthorized(agent);
-    }
-    
-    function deauthorizeAgent(address agent) external onlyOwner {
-        authorizedAgents[agent] = false;
-        emit AgentDeauthorized(agent);
-    }
-    
-    function deposit(address account) external payable {
-        require(msg.value > 0, "Amount must be greater than 0");
-        balances[account] += msg.value;
-        emit Deposit(account, msg.value);
-    }
-    
-    function withdraw(address payable account, uint256 amount) external onlyAuthorized {
-        require(amount > 0, "Amount must be greater than 0");
-        require(balances[account] >= amount, "Insufficient balance");
-        
-        balances[account] -= amount;
-        (bool success, ) = account.call{value: amount}("");
-        require(success, "Transfer failed");
-        
-        emit Withdrawal(account, amount);
-    }
-    
-    function getBalance(address account) external view returns (uint256) {
-        return balances[account];
-    }
-    
-    function isAuthorizedAgent(address agent) external view returns (bool) {
-        return authorizedAgents[agent];
-    }
-}
-```
+- **check_balance**: Get the balance of a wallet address
+- **deposit**: Deposit tokens to a wallet address
+- **withdraw**: Withdraw tokens from a wallet address
+- **get_network_info**: Get information about the current blockchain network
+- **check_agent_authorization**: Check if an agent address is authorized
 
 ## Prerequisites
 
-- Node.js (v14 or higher)
-- An EVM-compatible wallet with a private key
-- Access to a Polkadot EVM-compatible network (Moonbeam, Astar, etc.)
-- The deployed contract address on the network
+- Python 3.8+
+- Node.js 14+
+- [Optional] Access to a Polkadot/Moonbeam node
 
 ## Installation
 
-1. Clone this repository
-```bash
-git clone https://github.com/yourusername/polkadot-mcp.git
-cd polkadot-mcp
+1. Clone this repository:
+   ```
+   git clone https://github.com/yourusername/polkadot-mcp.git
+   cd polkadot-mcp
+   ```
+
+2. Install Python dependencies:
+   ```
+   pip install -r requirements.txt
+   ```
+
+3. Install Node.js dependencies:
+   ```
+   npm install
+   ```
+
+4. Create a `.env` file by copying the sample file:
+   ```
+   cp env.sample .env
+   ```
+
+5. Edit the `.env` file with your configuration:
+   ```
+   # Backend API configuration
+   API_URL=http://localhost:3000
+   API_KEY=your-api-key
+
+   # Blockchain configuration
+   CONTRACT_ADDRESS=YOUR_DEPLOYED_CONTRACT_ADDRESS
+   PROVIDER_URL=https://rpc.api.moonbase.moonbeam.network
+   PRIVATE_KEY=YOUR_PRIVATE_KEY
+   PORT=3000
+
+   # MCP server configuration
+   MCP_MODE=stdio
+   MCP_PORT=3001
+   MCP_SERVER_PATH=./polkadot_mcp_server.py
+
+   # Wallet configuration for examples
+   WALLET_ADDRESS=0x123456789012345678901234567890123456789A
+   ```
+
+## Usage
+
+1. Start the Polkadot API server:
+   ```
+   npm start
+   ```
+
+2. Run the MCP client demo (which automatically starts the MCP server):
+   ```
+   python polkadot_mcp_client.py
+   ```
+
+   The client will automatically read configuration from your `.env` file. However, you can still override these settings with command-line arguments:
+   ```
+   python polkadot_mcp_client.py --api-key override-api-key --address 0xAnotherWalletAddress
+   ```
+
+## Using with an LLM
+
+This MCP server can be integrated with any LLM system that supports the Model Context Protocol. Here's a basic example of how a conversation might look:
+
+```
+User: What's my wallet balance?
+
+LLM: [Invokes check_balance tool with the user's address]
+Your wallet balance is 1.5 DOT.
+
+User: Please deposit 0.5 DOT into my wallet.
+
+LLM: [Invokes deposit tool with the user's address and amount 0.5]
+I've deposited 0.5 DOT into your wallet. The transaction hash is 0x1234...
 ```
 
-2. Install dependencies
-```bash
-npm install
-```
+## Protocol Implementation
 
-3. Create a `.env` file based on the example
-```bash
-cp .env.example .env
-```
+The MCP implementation follows the JSON-RPC format for communication:
 
-4. Edit the `.env` file with your configuration
-```bash
-CONTRACT_ADDRESS=your_deployed_contract_address
-PROVIDER_URL=your_provider_url
-PRIVATE_KEY=your_private_key
-API_KEY=your_secure_api_key
-```
+1. **Discovery**: Clients can query the server for available tools, resources, and prompts.
+2. **Tool Invocation**: Clients can invoke tools with specific parameters.
 
-## Deploying the Smart Contract
-
-1. Go to [Remix IDE](https://remix.ethereum.org/)
-2. Create a new file and paste the smart contract code
-3. Compile the contract using Solidity compiler 0.8.0 or higher
-4. In the deploy tab, connect Remix to MetaMask
-5. Configure MetaMask for an EVM-compatible Polkadot network:
-   - For Moonbeam's testnet (Moonbase Alpha):
-     - Network Name: Moonbase Alpha
-     - RPC URL: https://rpc.api.moonbase.moonbeam.network
-     - Chain ID: 1287
-     - Currency Symbol: DEV
-   - For Astar's testnet (Shibuya):
-     - Network Name: Shibuya
-     - RPC URL: https://evm.shibuya.astar.network
-     - Chain ID: 81
-     - Currency Symbol: SBY
-6. Deploy the contract and save the contract address
-
-## Starting the MCP
-
-Run the server:
-```bash
-npm start
-```
-
-For development with auto-restart:
-```bash
-npm run dev
-```
-
-## API Endpoints
-
-All API endpoints require the `x-api-key` header with your API key.
-
-### Health Check
-```
-GET /api/health
-```
-
-### Get Wallet Balance
-```
-GET /api/balance/:address
-```
-
-### Get Contract Owner
-```
-GET /api/owner
-```
-
-### Check if Address is Authorized Agent
-```
-GET /api/agent/:address
-```
-
-### Deposit Tokens
-```
-POST /api/deposit
-Content-Type: application/json
-
+Example discovery request:
+```json
 {
-  "address": "0x...",
-  "amount": "0.1"
+  "jsonrpc": "2.0", 
+  "id": 1,
+  "method": "mcp.discover",
+  "params": {}
 }
 ```
 
-### Withdraw Tokens
-```
-POST /api/withdraw
-Content-Type: application/json
-
+Example tool invocation:
+```json
 {
-  "address": "0x...",
-  "amount": "0.1"
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "mcp.invoke",
+  "params": {
+    "name": "check_balance",
+    "parameters": {
+      "address": "0x123456789012345678901234567890123456789A"
+    }
+  }
 }
 ```
-
-### Authorize an AI Agent
-```
-POST /api/authorize-agent
-Content-Type: application/json
-
-{
-  "address": "0x..."
-}
-```
-
-### Deauthorize an AI Agent
-```
-POST /api/deauthorize-agent
-Content-Type: application/json
-
-{
-  "address": "0x..."
-}
-```
-
-### Get Network Information
-```
-GET /api/network
-```
-
-## Integration with AI Agents
-
-AI agents can interact with this MCP through HTTP requests. Here's an example in Python:
-
-```python
-import requests
-
-API_URL = "http://localhost:3000/api"
-API_KEY = "your-api-key"
-HEADERS = {
-    "Content-Type": "application/json",
-    "x-api-key": API_KEY
-}
-
-# Get wallet balance
-def get_balance(address):
-    response = requests.get(f"{API_URL}/balance/{address}", headers=HEADERS)
-    return response.json()
-
-# Deposit tokens
-def deposit(address, amount):
-    data = {"address": address, "amount": str(amount)}
-    response = requests.post(f"{API_URL}/deposit", json=data, headers=HEADERS)
-    return response.json()
-
-# Withdraw tokens
-def withdraw(address, amount):
-    data = {"address": address, "amount": str(amount)}
-    response = requests.post(f"{API_URL}/withdraw", json=data, headers=HEADERS)
-    return response.json()
-```
-
-## Security Considerations
-
-- Always use HTTPS in production
-- Store your private key securely, never commit it to your repository
-- Use a strong API key and consider integrating OAuth2 for production use
-- Consider implementing rate limiting per client
-- Monitor transactions for unusual activity
 
 ## License
 
-MIT
+This project is licensed under the MIT License - see the LICENSE file for details.
