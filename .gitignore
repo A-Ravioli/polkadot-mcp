@@ -1,2 +1,5 @@
 node_modules/.bin/_mocha
 /node_modules
+*.pyc
+/artifacts/build-info
+package-lock.json
